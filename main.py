@@ -3,6 +3,7 @@ from tkinter import filedialog, messagebox, scrolledtext
 import threading
 import os
 import sys
+import subprocess
 
 try:
     import whisper
@@ -22,8 +23,30 @@ class TranscripterApp:
         self.model = None
         self.transcribing = False
         
+        # Verificar ffmpeg
+        self.check_ffmpeg()
+        
         # Crear interfaz
         self.create_widgets()
+        
+    def check_ffmpeg(self):
+        """Verifica si ffmpeg está disponible"""
+        try:
+            subprocess.run(["ffmpeg", "-version"], 
+                         capture_output=True, 
+                         check=True,
+                         creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            # Intentar instalar ffmpeg-python o mostrar mensaje
+            messagebox.showwarning(
+                "FFmpeg no encontrado",
+                "FFmpeg no está instalado o no está en el PATH.\n\n"
+                "Por favor instala FFmpeg:\n"
+                "1. Descarga desde: https://ffmpeg.org/download.html\n"
+                "2. O instala con: winget install ffmpeg\n"
+                "3. O instala con: choco install ffmpeg\n\n"
+                "La aplicación puede no funcionar correctamente sin FFmpeg."
+            )
         
     def create_widgets(self):
         # Frame superior para controles
@@ -142,6 +165,12 @@ class TranscripterApp:
         
     def transcribe_audio(self):
         try:
+            # Verificar que el archivo existe
+            if not os.path.exists(self.audio_file):
+                error_msg = f"El archivo no existe: {self.audio_file}"
+                self.root.after(0, lambda: messagebox.showerror("Error", error_msg))
+                return
+            
             # Cargar modelo (base es un buen balance entre velocidad y precisión)
             if self.model is None:
                 self.root.after(0, lambda: self.status_label.config(
@@ -153,15 +182,39 @@ class TranscripterApp:
                 text="Transcribiendo audio... Esto puede tardar varios minutos dependiendo de la duración."
             ))
             
-            # Transcribir
-            result = self.model.transcribe(self.audio_file, language="es")
-            text = result["text"]
+            # Transcribir - usar fp16=False para mejor compatibilidad
+            result = self.model.transcribe(
+                self.audio_file, 
+                language="es",
+                fp16=False,
+                verbose=False
+            )
+            text = result["text"].strip()
+            
+            if not text:
+                self.root.after(0, lambda: messagebox.showwarning(
+                    "Advertencia", 
+                    "No se pudo transcribir el audio. El archivo puede estar corrupto o no contener audio."
+                ))
+                return
             
             # Actualizar UI en el hilo principal
             self.root.after(0, lambda: self.update_text(text))
             
+        except FileNotFoundError as e:
+            error_msg = (
+                f"Error: No se encontró el archivo o FFmpeg no está instalado.\n\n"
+                f"Detalles: {str(e)}\n\n"
+                f"Por favor instala FFmpeg:\n"
+                f"- winget install ffmpeg\n"
+                f"- O descarga desde: https://ffmpeg.org/download.html"
+            )
+            self.root.after(0, lambda: messagebox.showerror("Error - FFmpeg requerido", error_msg))
+            self.root.after(0, lambda: self.status_label.config(text="Error: FFmpeg no encontrado"))
         except Exception as e:
-            error_msg = f"Error durante la transcripción: {str(e)}"
+            error_msg = f"Error durante la transcripción:\n\n{str(e)}\n\n"
+            if "ffmpeg" in str(e).lower() or "WinError 2" in str(e):
+                error_msg += "Solución: Instala FFmpeg con: winget install ffmpeg"
             self.root.after(0, lambda: messagebox.showerror("Error", error_msg))
             self.root.after(0, lambda: self.status_label.config(text="Error durante la transcripción"))
         finally:
