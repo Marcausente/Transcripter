@@ -4,12 +4,54 @@ import threading
 import os
 import sys
 import subprocess
+import glob
 
 try:
     import whisper
 except ImportError:
     messagebox.showerror("Error", "Por favor instala whisper: pip install openai-whisper")
     sys.exit(1)
+
+def find_ffmpeg():
+    """Busca ffmpeg en ubicaciones comunes de Windows"""
+    # Primero intentar con el PATH normal
+    try:
+        subprocess.run(["ffmpeg", "-version"], 
+                     capture_output=True, 
+                     check=True,
+                     creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    
+    # Buscar en ubicaciones comunes de Windows
+    if sys.platform == "win32":
+        search_paths = [
+            os.path.expanduser("~\\AppData\\Local\\Microsoft\\WinGet\\Packages"),
+            os.path.expanduser("~\\AppData\\Local\\Programs"),
+            "C:\\Program Files",
+            "C:\\Program Files (x86)",
+        ]
+        
+        for base_path in search_paths:
+            if os.path.exists(base_path):
+                # Buscar recursivamente ffmpeg.exe
+                pattern = os.path.join(base_path, "**", "ffmpeg.exe")
+                matches = glob.glob(pattern, recursive=True)
+                if matches:
+                    ffmpeg_path = os.path.dirname(matches[0])
+                    # Agregar al PATH temporalmente
+                    os.environ["PATH"] = ffmpeg_path + os.pathsep + os.environ.get("PATH", "")
+                    try:
+                        subprocess.run(["ffmpeg", "-version"], 
+                                     capture_output=True, 
+                                     check=True,
+                                     creationflags=subprocess.CREATE_NO_WINDOW)
+                        return True
+                    except:
+                        pass
+    
+    return False
 
 class TranscripterApp:
     def __init__(self, root):
@@ -30,23 +72,23 @@ class TranscripterApp:
         self.create_widgets()
         
     def check_ffmpeg(self):
-        """Verifica si ffmpeg está disponible"""
-        try:
-            subprocess.run(["ffmpeg", "-version"], 
-                         capture_output=True, 
-                         check=True,
-                         creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            # Intentar instalar ffmpeg-python o mostrar mensaje
-            messagebox.showwarning(
-                "FFmpeg no encontrado",
-                "FFmpeg no está instalado o no está en el PATH.\n\n"
-                "Por favor instala FFmpeg:\n"
-                "1. Descarga desde: https://ffmpeg.org/download.html\n"
-                "2. O instala con: winget install ffmpeg\n"
-                "3. O instala con: choco install ffmpeg\n\n"
-                "La aplicación puede no funcionar correctamente sin FFmpeg."
-            )
+        """Verifica si ffmpeg está disponible y lo busca si no está en PATH"""
+        if find_ffmpeg():
+            return  # FFmpeg encontrado, todo bien
+        
+        # Si no se encontró, mostrar advertencia pero permitir continuar
+        # (puede que funcione de todas formas si Whisper tiene su propia forma de procesar)
+        messagebox.showwarning(
+            "FFmpeg no encontrado",
+            "FFmpeg no está en el PATH del sistema.\n\n"
+            "La aplicación intentará buscar FFmpeg automáticamente.\n"
+            "Si aún así hay problemas, puedes:\n\n"
+            "1. Reiniciar la aplicación (para recargar el PATH)\n"
+            "2. O instalar FFmpeg manualmente:\n"
+            "   - winget install ffmpeg\n"
+            "   - O descarga desde: https://ffmpeg.org/download.html\n\n"
+            "Puedes continuar, pero es posible que la transcripción falle."
+        )
         
     def create_widgets(self):
         # Frame superior para controles
@@ -165,6 +207,9 @@ class TranscripterApp:
         
     def transcribe_audio(self):
         try:
+            # Buscar FFmpeg antes de comenzar (por si no se encontró al inicio)
+            find_ffmpeg()
+            
             # Verificar que el archivo existe
             if not os.path.exists(self.audio_file):
                 error_msg = f"El archivo no existe: {self.audio_file}"

@@ -4,7 +4,12 @@ Aplicación simple con interfaz gráfica para transcribir archivos de audio (MP3
 
 ## Instalación
 
-1. Instala las dependencias:
+1. Instala FFmpeg (requerido para procesar archivos de audio):
+   - **Windows**: `winget install ffmpeg` o `choco install ffmpeg`
+   - **Linux**: `sudo apt install ffmpeg` (Ubuntu/Debian) o `sudo yum install ffmpeg` (CentOS/RHEL)
+   - **macOS**: `brew install ffmpeg`
+
+2. Instala las dependencias de Python:
 ```bash
 pip install -r requirements.txt
 ```
@@ -31,7 +36,15 @@ python main.py
 
 ## Notas
 
+- **FFmpeg es requerido**: La aplicación necesita FFmpeg instalado para procesar archivos de audio
 - La primera vez que uses la aplicación, se descargará el modelo Whisper 'base' (aproximadamente 150 MB)
-- El tiempo de transcripción depende de la duración del audio
+- El tiempo de transcripción depende de la duración del audio (aproximadamente 1 minuto de audio = 1-2 minutos de procesamiento)
 - El modelo 'base' ofrece un buen balance entre velocidad y precisión
+
+## Solución de problemas
+
+Si obtienes un error "WinError 2" o "El sistema no puede encontrar el archivo especificado":
+- Asegúrate de que FFmpeg está instalado y disponible en el PATH
+- Reinicia la terminal/consola después de instalar FFmpeg
+- Verifica la instalación ejecutando: `ffmpeg -version`
 
